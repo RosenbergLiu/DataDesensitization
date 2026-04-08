@@ -2,37 +2,55 @@
 @inject IConnectionManager ConnectionManager
 @implements IDisposable
 
-<div class="page">
-    <div class="sidebar">
+<div class="flex h-screen overflow-hidden bg-gray-50">
+    <!-- Sidebar -->
+    <aside class="hidden md:flex md:flex-col md:w-64 bg-gradient-to-b from-slate-900 via-brand-950 to-brand-900 border-r border-white/5">
         <NavMenu />
-    </div>
+    </aside>
 
-    <main>
-        <div class="top-row px-4">
-            <span class="me-3">
+    <!-- Main content area -->
+    <div class="flex flex-1 flex-col overflow-hidden">
+        <!-- Top bar -->
+        <header class="flex items-center justify-between h-14 px-6 bg-white border-b border-gray-200 shadow-sm shrink-0">
+            <div class="flex items-center gap-3">
+                <span class="md:hidden text-lg font-semibold text-brand-700">DataDesensitization</span>
+            </div>
+            <div class="flex items-center gap-4">
                 @switch (ConnectionManager.Status)
                 {
                     case ConnectionStatus.Connected:
-                        <span class="badge bg-success">Connected</span>
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            Connected
+                        </span>
                         break;
                     case ConnectionStatus.Connecting:
-                        <span class="badge bg-warning text-dark">Connecting...</span>
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                            Connecting...
+                        </span>
                         break;
                     case ConnectionStatus.Error:
-                        <span class="badge bg-danger">Error</span>
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                            <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                            Error
+                        </span>
                         break;
                     default:
-                        <span class="badge bg-secondary">Disconnected</span>
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                            Disconnected
+                        </span>
                         break;
                 }
-            </span>
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+            </div>
+        </header>
 
-        <article class="content px-4">
+        <!-- Page content -->
+        <main class="flex-1 overflow-y-auto p-6">
             @Body
-        </article>
-    </main>
+        </main>
+    </div>
 </div>
 
 <div id="blazor-error-ui">

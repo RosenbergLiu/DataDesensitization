@@ -5,108 +5,119 @@
 
 <PageTitle>Schema Browser</PageTitle>
 
-<h3>Schema Browser</h3>
+<div class="max-w-5xl">
+    <h2 class="text-2xl font-bold text-gray-900">Schema Browser</h2>
+    <p class="mt-1 text-sm text-gray-500">Explore your database tables and columns.</p>
 
-<div class="row mt-3">
-    <div class="col-md-10">
-        <div class="mb-3">
-            <input type="text" class="form-control" placeholder="Search tables and columns..."
+    <div class="mt-6">
+        <div class="relative">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text"
+                   class="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
+                   placeholder="Search tables and columns..."
                    @bind="searchFilter" @bind:event="oninput" @bind:after="OnSearchChangedAsync" />
         </div>
 
         @if (errorMessage is not null)
         {
-            <div class="alert alert-danger" role="alert">@errorMessage</div>
+            <div class="mt-4 flex items-start gap-3 rounded-lg bg-red-50 border border-red-200 p-4" role="alert">
+                <svg class="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <p class="text-sm text-red-700">@errorMessage</p>
+            </div>
         }
 
         @if (isLoading)
         {
-            <div class="d-flex align-items-center">
-                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                <span>Loading schema...</span>
+            <div class="mt-6 flex items-center gap-2 text-sm text-gray-500">
+                <svg class="animate-spin h-4 w-4 text-brand-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                Loading schema...
             </div>
         }
         else if (tables.Count == 0)
         {
-            <p class="text-muted">No tables found. Make sure you are connected to a database.</p>
+            <div class="mt-6 text-center py-12 rounded-xl border border-dashed border-gray-300 bg-white">
+                <svg class="mx-auto w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm0 5h16"/></svg>
+                <p class="mt-2 text-sm text-gray-500">No tables found. Make sure you are connected to a database.</p>
+            </div>
         }
         else
         {
-            <div class="accordion" id="schemaAccordion">
+            <div class="mt-4 space-y-2">
                 @foreach (var table in tables)
                 {
                     var tableKey = $"{table.SchemaName}_{table.TableName}";
-                    var headingId = $"heading-{tableKey}";
-                    var collapseId = $"collapse-{tableKey}";
                     var isExpanded = expandedTables.Contains(tableKey);
 
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="@headingId">
-                            <button class="accordion-button @(isExpanded ? "" : "collapsed")" type="button"
-                                    @onclick="() => ToggleTableAsync(table, tableKey)">
-                                <strong>@table.SchemaName.@table.TableName</strong>
-                            </button>
-                        </h2>
-                        <div id="@collapseId" class="accordion-collapse collapse @(isExpanded ? "show" : "")">
-                            <div class="accordion-body p-0">
+                    <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                        <button class="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-gray-50 transition-colors"
+                                @onclick="() => ToggleTableAsync(table, tableKey)">
+                            <span class="font-medium text-sm text-gray-900">@table.SchemaName.@table.TableName</span>
+                            <svg class="w-5 h-5 text-gray-400 transition-transform @(isExpanded ? "rotate-180" : "")" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+
+                        @if (isExpanded)
+                        {
+                            <div class="border-t border-gray-100">
                                 @if (columnsByTable.TryGetValue(tableKey, out var columns))
                                 {
-                                    <table class="table table-sm table-striped mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th>Column</th>
-                                                <th>Data Type</th>
-                                                <th>Nullable</th>
-                                                <th>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var col in FilterColumns(columns))
-                                            {
-                                                var hasRule = HasAssignedRule(table.TableName, col.ColumnName);
-                                                var isSensitive = IsAutoDetectedSensitive(col.ColumnName);
-
-                                                <tr class="@(isSensitive && !hasRule ? "table-warning" : "")">
-                                                    <td>@col.ColumnName</td>
-                                                    <td><code>@col.DataType</code>@(col.MaxLength.HasValue ? $"({col.MaxLength})" : "")</td>
-                                                    <td>
-                                                        @if (col.IsNullable)
-                                                        {
-                                                            <span class="badge bg-secondary">Nullable</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="badge bg-dark">Not Null</span>
-                                                        }
-                                                    </td>
-                                                    <td>
-                                                        @if (hasRule)
-                                                        {
-                                                            <span class="badge bg-success" title="Desensitization rule assigned">
-                                                                &#x2714; Rule Assigned
-                                                            </span>
-                                                        }
-                                                        else if (isSensitive)
-                                                        {
-                                                            <span class="badge bg-warning text-dark" title="Auto-detected as sensitive">
-                                                                &#x26A0; Sensitive
-                                                            </span>
-                                                        }
-                                                    </td>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="bg-gray-50 text-left">
+                                                    <th class="px-5 py-2.5 font-medium text-gray-500 text-xs uppercase tracking-wider">Column</th>
+                                                    <th class="px-5 py-2.5 font-medium text-gray-500 text-xs uppercase tracking-wider">Data Type</th>
+                                                    <th class="px-5 py-2.5 font-medium text-gray-500 text-xs uppercase tracking-wider">Nullable</th>
+                                                    <th class="px-5 py-2.5 font-medium text-gray-500 text-xs uppercase tracking-wider">Status</th>
                                                 </tr>
-                                            }
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody class="divide-y divide-gray-100">
+                                                @foreach (var col in FilterColumns(columns))
+                                                {
+                                                    var hasRule = HasAssignedRule(table.TableName, col.ColumnName);
+                                                    var isSensitive = IsAutoDetectedSensitive(col.ColumnName);
+
+                                                    <tr class="@(isSensitive && !hasRule ? "bg-amber-50/50" : "hover:bg-gray-50") transition-colors">
+                                                        <td class="px-5 py-2.5 font-medium text-gray-900">@col.ColumnName</td>
+                                                        <td class="px-5 py-2.5"><code class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">@col.DataType@(col.MaxLength.HasValue ? $"({col.MaxLength})" : "")</code></td>
+                                                        <td class="px-5 py-2.5">
+                                                            @if (col.IsNullable)
+                                                            {
+                                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Nullable</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800 text-white">Not Null</span>
+                                                            }
+                                                        </td>
+                                                        <td class="px-5 py-2.5">
+                                                            @if (hasRule)
+                                                            {
+                                                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                                                    &#x2714; Rule Assigned
+                                                                </span>
+                                                            }
+                                                            else if (isSensitive)
+                                                            {
+                                                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                                                                    &#x26A0; Sensitive
+                                                                </span>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 }
                                 else
                                 {
-                                    <div class="p-3">
-                                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                    <div class="px-5 py-4 flex items-center gap-2 text-sm text-gray-500">
+                                        <svg class="animate-spin h-4 w-4 text-brand-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
                                         Loading columns...
                                     </div>
                                 }
                             </div>
-                        </div>
+                        }
                     </div>
                 }
             </div>

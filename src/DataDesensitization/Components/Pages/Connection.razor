@@ -4,58 +4,69 @@
 
 <PageTitle>Connection Management</PageTitle>
 
-<h3>Connection Management</h3>
+<div class="max-w-2xl">
+    <h2 class="text-2xl font-bold text-gray-900">Connection Management</h2>
+    <p class="mt-1 text-sm text-gray-500">Configure your database connection.</p>
 
-<div class="row mt-3">
-    <div class="col-md-8">
-        <div class="mb-3">
-            <label for="connectionString" class="form-label">Connection String</label>
-            <input id="connectionString" type="text" class="form-control" @bind="connectionString"
-                   placeholder="Enter connection string..." disabled="@isConnecting" />
-        </div>
+    <div class="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="space-y-5">
+            <div>
+                <label for="connectionString" class="block text-sm font-medium text-gray-700 mb-1.5">Connection String</label>
+                <input id="connectionString" type="text"
+                       class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
+                       @bind="connectionString"
+                       placeholder="Enter connection string..." disabled="@isConnecting" />
+            </div>
 
-        <div class="mb-3">
-            <label for="provider" class="form-label">Database Provider</label>
-            <select id="provider" class="form-select" @bind="selectedProvider" disabled="@isConnecting">
-                <option value="@DatabaseProvider.SqlServer">SQL Server</option>
-                <option value="@DatabaseProvider.PostgreSql">PostgreSQL</option>
-            </select>
-        </div>
+            <div>
+                <label for="provider" class="block text-sm font-medium text-gray-700 mb-1.5">Database Provider</label>
+                <select id="provider"
+                        class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors bg-white"
+                        @bind="selectedProvider" disabled="@isConnecting">
+                    <option value="@DatabaseProvider.SqlServer">SQL Server</option>
+                    <option value="@DatabaseProvider.PostgreSql">PostgreSQL</option>
+                </select>
+            </div>
 
-        <div class="d-flex gap-2">
-            @if (ConnectionManager.Status != ConnectionStatus.Connected)
-            {
-                <button class="btn btn-primary" @onclick="ConnectAsync" disabled="@(isConnecting || string.IsNullOrWhiteSpace(connectionString))">
-                    @if (isConnecting)
-                    {
-                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                        <span>Connecting...</span>
-                    }
-                    else
-                    {
-                        <span>Connect</span>
-                    }
-                </button>
-            }
-            else
-            {
-                <button class="btn btn-outline-danger" @onclick="DisconnectAsync">
-                    Disconnect
-                </button>
-            }
+            <div class="flex items-center gap-3 pt-1">
+                @if (ConnectionManager.Status != ConnectionStatus.Connected)
+                {
+                    <button class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            @onclick="ConnectAsync" disabled="@(isConnecting || string.IsNullOrWhiteSpace(connectionString))">
+                        @if (isConnecting)
+                        {
+                            <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            <span>Connecting...</span>
+                        }
+                        else
+                        {
+                            <span>Connect</span>
+                        }
+                    </button>
+                }
+                else
+                {
+                    <button class="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 shadow-sm hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-colors"
+                            @onclick="DisconnectAsync">
+                        Disconnect
+                    </button>
+                }
+            </div>
         </div>
 
         @if (successMessage is not null)
         {
-            <div class="alert alert-success mt-3" role="alert">
-                @successMessage
+            <div class="mt-5 flex items-start gap-3 rounded-lg bg-emerald-50 border border-emerald-200 p-4" role="alert">
+                <svg class="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <p class="text-sm text-emerald-700">@successMessage</p>
             </div>
         }
 
         @if (errorMessage is not null)
         {
-            <div class="alert alert-danger mt-3" role="alert">
-                @errorMessage
+            <div class="mt-5 flex items-start gap-3 rounded-lg bg-red-50 border border-red-200 p-4" role="alert">
+                <svg class="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <p class="text-sm text-red-700">@errorMessage</p>
             </div>
         }
     </div>

@@ -6,108 +6,126 @@
 
 <PageTitle>Profile Management</PageTitle>
 
-<h3>Profile Management</h3>
+<div class="max-w-5xl">
+    <h2 class="text-2xl font-bold text-gray-900">Profile Management</h2>
+    <p class="mt-1 text-sm text-gray-500">Save, load, and share rule configurations.</p>
 
-@if (successMessage is not null)
-{
-    <div class="alert alert-success mt-2" role="alert">@successMessage</div>
-}
+    @if (successMessage is not null)
+    {
+        <div class="mt-4 flex items-start gap-3 rounded-lg bg-emerald-50 border border-emerald-200 p-4" role="alert">
+            <svg class="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <p class="text-sm text-emerald-700">@successMessage</p>
+        </div>
+    }
 
-@if (errorMessage is not null)
-{
-    <div class="alert alert-danger mt-2" role="alert">@errorMessage</div>
-}
+    @if (errorMessage is not null)
+    {
+        <div class="mt-4 flex items-start gap-3 rounded-lg bg-red-50 border border-red-200 p-4" role="alert">
+            <svg class="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <p class="text-sm text-red-700">@errorMessage</p>
+        </div>
+    }
 
-@if (warningMessages.Count > 0)
-{
-    <div class="alert alert-warning mt-2" role="alert">
-        <strong>Unmatched Rules:</strong>
-        <ul class="mb-0 mt-1">
-            @foreach (var warning in warningMessages)
-            {
-                <li>@warning</li>
-            }
-        </ul>
-    </div>
-}
-
-<div class="row mt-3">
-    <!-- Save Profile -->
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header"><h5 class="mb-0">Save Profile</h5></div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label for="saveProfileName" class="form-label">Profile Name</label>
-                    <input type="text" class="form-control" id="saveProfileName"
-                           @bind="saveProfileName" placeholder="Enter profile name" />
-                </div>
-                <button class="btn btn-primary" @onclick="SaveProfileAsync"
-                        disabled="@(string.IsNullOrWhiteSpace(saveProfileName) || RuleConfigurationService.Rules.Count == 0)">
-                    Save Profile
-                </button>
-                <div class="form-text mt-1">
-                    Current rules: @RuleConfigurationService.Rules.Count
+    @if (warningMessages.Count > 0)
+    {
+        <div class="mt-4 rounded-lg bg-amber-50 border border-amber-200 p-4" role="alert">
+            <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                <div>
+                    <p class="text-sm font-medium text-amber-800">Unmatched Rules:</p>
+                    <ul class="mt-1 text-sm text-amber-700 list-disc list-inside space-y-0.5">
+                        @foreach (var warning in warningMessages)
+                        {
+                            <li>@warning</li>
+                        }
+                    </ul>
                 </div>
             </div>
         </div>
-    </div>
+    }
 
-    <!-- Load Profile -->
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header"><h5 class="mb-0">Load Profile</h5></div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label for="loadProfileName" class="form-label">Profile Name</label>
-                    <input type="text" class="form-control" id="loadProfileName"
+    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+        <!-- Save Profile -->
+        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <div class="bg-gray-50 px-5 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900">Save Profile</h3>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label for="saveProfileName" class="block text-sm font-medium text-gray-700 mb-1.5">Profile Name</label>
+                    <input type="text" id="saveProfileName"
+                           class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
+                           @bind="saveProfileName" placeholder="Enter profile name" />
+                </div>
+                <div class="flex items-center justify-between">
+                    <button class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            @onclick="SaveProfileAsync"
+                            disabled="@(string.IsNullOrWhiteSpace(saveProfileName) || RuleConfigurationService.Rules.Count == 0)">
+                        Save Profile
+                    </button>
+                    <span class="text-xs text-gray-500">@RuleConfigurationService.Rules.Count rule(s)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Load Profile -->
+        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <div class="bg-gray-50 px-5 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900">Load Profile</h3>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label for="loadProfileName" class="block text-sm font-medium text-gray-700 mb-1.5">Profile Name</label>
+                    <input type="text" id="loadProfileName"
+                           class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
                            @bind="loadProfileName" placeholder="Enter profile name" />
                 </div>
-                <button class="btn btn-secondary" @onclick="LoadProfileAsync"
+                <button class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        @onclick="LoadProfileAsync"
                         disabled="@(string.IsNullOrWhiteSpace(loadProfileName))">
                     Load Profile
                 </button>
             </div>
         </div>
-    </div>
-</div>
 
-<div class="row">
-    <!-- Export Profile -->
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header"><h5 class="mb-0">Export Profile</h5></div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label for="exportFilePath" class="form-label">File Path</label>
-                    <input type="text" class="form-control" id="exportFilePath"
+        <!-- Export Profile -->
+        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <div class="bg-gray-50 px-5 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900">Export Profile</h3>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label for="exportFilePath" class="block text-sm font-medium text-gray-700 mb-1.5">File Path</label>
+                    <input type="text" id="exportFilePath"
+                           class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
                            @bind="exportFilePath" placeholder="e.g. C:\profiles\my-profile.json" />
                 </div>
-                <button class="btn btn-outline-primary" @onclick="ExportProfileAsync"
+                <button class="inline-flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-600 shadow-sm hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        @onclick="ExportProfileAsync"
                         disabled="@(string.IsNullOrWhiteSpace(exportFilePath) || RuleConfigurationService.Rules.Count == 0 || ConnectionManager.Status != ConnectionStatus.Connected)">
                     Export Profile
                 </button>
                 @if (ConnectionManager.Status != ConnectionStatus.Connected)
                 {
-                    <div class="form-text text-warning mt-1">
-                        A database connection is required for export.
-                    </div>
+                    <p class="text-xs text-amber-600">A database connection is required for export.</p>
                 }
             </div>
         </div>
-    </div>
 
-    <!-- Import Profile -->
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header"><h5 class="mb-0">Import Profile</h5></div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label for="importFilePath" class="form-label">File Path</label>
-                    <input type="text" class="form-control" id="importFilePath"
+        <!-- Import Profile -->
+        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <div class="bg-gray-50 px-5 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900">Import Profile</h3>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label for="importFilePath" class="block text-sm font-medium text-gray-700 mb-1.5">File Path</label>
+                    <input type="text" id="importFilePath"
+                           class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
                            @bind="importFilePath" placeholder="e.g. C:\profiles\my-profile.json" />
                 </div>
-                <button class="btn btn-outline-secondary" @onclick="ImportProfileAsync"
+                <button class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        @onclick="ImportProfileAsync"
                         disabled="@(string.IsNullOrWhiteSpace(importFilePath))">
                     Import Profile
                 </button>
@@ -154,7 +172,6 @@
         {
             var result = await ProfileManager.LoadProfileAsync(loadProfileName.Trim());
 
-            // Clear existing rules and apply matched ones
             foreach (var rule in RuleConfigurationService.Rules.ToList())
             {
                 RuleConfigurationService.RemoveRule(rule.TableName, rule.ColumnName);
@@ -213,7 +230,6 @@
 
             if (result.LoadResult is not null)
             {
-                // Clear existing rules and apply matched ones
                 foreach (var rule in RuleConfigurationService.Rules.ToList())
                 {
                     RuleConfigurationService.RemoveRule(rule.TableName, rule.ColumnName);
