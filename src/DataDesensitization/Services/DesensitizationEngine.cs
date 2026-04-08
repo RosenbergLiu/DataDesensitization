@@ -41,17 +41,21 @@ public class DesensitizationEngine : IDesensitizationEngine
             var tableRules = tableGroup.ToList();
             var tableStopwatch = Stopwatch.StartNew();
 
+            // Get column metadata before starting the transaction so the
+            // introspector commands don't conflict with the pending transaction.
+            var columns = await _schemaIntrospector.GetColumnsAsync(tableName, ct);
+            var columnLookup = columns.ToDictionary(c => c.ColumnName, StringComparer.OrdinalIgnoreCase);
+
             DbTransaction? transaction = null;
             try
             {
                 transaction = await connection.BeginTransactionAsync(ct);
 
-                // Get column metadata for strategy creation
-                var columns = await _schemaIntrospector.GetColumnsAsync(tableName, ct);
-                var columnLookup = columns.ToDictionary(c => c.ColumnName, StringComparer.OrdinalIgnoreCase);
-
                 // Build column names list from rules
                 var columnNames = tableRules.Select(r => r.ColumnName).ToList();
+
+                // Get primary key columns for reliable row identification in UPDATE WHERE clauses
+                var pkColumns = await GetPrimaryKeyColumnsAsync(connection, tableName, transaction, ct);
 
                 // Count total rows for progress reporting
                 var totalRows = await CountRowsAsync(connection, tableName, transaction, ct);
@@ -92,7 +96,7 @@ public class DesensitizationEngine : IDesensitizationEngine
                         }
                     }
 
-                    await UpdateRowAsync(connection, tableName, row, updatedValues, transaction, ct);
+                    await UpdateRowAsync(connection, tableName, row, updatedValues, pkColumns, transaction, ct);
 
                     rowsProcessed++;
 
@@ -248,6 +252,70 @@ public class DesensitizationEngine : IDesensitizationEngine
         return Convert.ToInt64(result);
     }
 
+    /// <summary>
+    /// Retrieves the primary key column names for the given table.
+    /// Works for both SQL Server and PostgreSQL.
+    /// </summary>
+    private static async Task<List<string>> GetPrimaryKeyColumnsAsync(
+        DbConnection connection, string tableName,
+        DbTransaction transaction, CancellationToken ct)
+    {
+        var parts = tableName.Split('.', 2);
+        var schema = parts.Length > 1 ? parts[0] : null;
+        var table = parts.Length > 1 ? parts[1] : parts[0];
+
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+
+        // ANSI INFORMATION_SCHEMA query that works on both SQL Server and PostgreSQL
+        if (schema is not null)
+        {
+            cmd.CommandText = @"
+                SELECT kcu.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+                  ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                 AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+                 AND tc.TABLE_NAME = kcu.TABLE_NAME
+                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                  AND tc.TABLE_SCHEMA = @Schema
+                  AND tc.TABLE_NAME = @TableName
+                ORDER BY kcu.ORDINAL_POSITION";
+
+            var schemaParam = cmd.CreateParameter();
+            schemaParam.ParameterName = "@Schema";
+            schemaParam.Value = schema;
+            cmd.Parameters.Add(schemaParam);
+        }
+        else
+        {
+            cmd.CommandText = @"
+                SELECT kcu.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+                  ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                 AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+                 AND tc.TABLE_NAME = kcu.TABLE_NAME
+                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                  AND tc.TABLE_NAME = @TableName
+                ORDER BY kcu.ORDINAL_POSITION";
+        }
+
+        var tableParam = cmd.CreateParameter();
+        tableParam.ParameterName = "@TableName";
+        tableParam.Value = table;
+        cmd.Parameters.Add(tableParam);
+
+        var pkColumns = new List<string>();
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            pkColumns.Add(reader.GetString(0));
+        }
+
+        return pkColumns;
+    }
+
     private static async Task<List<Dictionary<string, object?>>> ReadRowsAsync(
         DbConnection connection, string tableName,
         List<string> columnNames, DbTransaction transaction,
@@ -258,9 +326,6 @@ public class DesensitizationEngine : IDesensitizationEngine
         using var cmd = connection.CreateCommand();
         cmd.Transaction = transaction;
 
-        // Select all columns in the table so we can identify rows for UPDATE (using all columns)
-        // We need at least the rule columns, but also need a way to identify rows.
-        // Use "SELECT *" to get all columns including any primary key.
         cmd.CommandText = $"SELECT * FROM {QuoteIdentifier(tableName)}";
 
         using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -302,6 +367,7 @@ public class DesensitizationEngine : IDesensitizationEngine
         DbConnection connection, string tableName,
         Dictionary<string, object?> originalRow,
         Dictionary<string, object?> updatedValues,
+        List<string> pkColumns,
         DbTransaction transaction, CancellationToken ct)
     {
         if (updatedValues.Count == 0)
@@ -326,14 +392,27 @@ public class DesensitizationEngine : IDesensitizationEngine
             paramIndex++;
         }
 
-        // Build WHERE clause using all original columns to identify the row
+        // Build WHERE clause using primary key columns when available,
+        // otherwise fall back to all columns (excluding non-comparable types).
+        var whereColumns = pkColumns.Count > 0
+            ? pkColumns
+            : originalRow.Keys.ToList();
+
         var whereClauses = new List<string>();
-        foreach (var (columnName, originalValue) in originalRow)
+        foreach (var columnName in whereColumns)
         {
+            if (!originalRow.TryGetValue(columnName, out var originalValue))
+                continue;
+
             var paramName = $"@w{paramIndex}";
             if (originalValue is null)
             {
                 whereClauses.Add($"{QuoteIdentifier(columnName)} IS NULL");
+            }
+            else if (originalValue is byte[])
+            {
+                // Skip binary columns — they can't be reliably compared with =
+                continue;
             }
             else
             {
@@ -345,6 +424,9 @@ public class DesensitizationEngine : IDesensitizationEngine
             }
             paramIndex++;
         }
+
+        if (whereClauses.Count == 0)
+            return;
 
         cmd.CommandText = $"UPDATE {QuoteIdentifier(tableName)} SET {string.Join(", ", setClauses)} WHERE {string.Join(" AND ", whereClauses)}";
 
@@ -385,7 +467,13 @@ public class DesensitizationEngine : IDesensitizationEngine
 
     private static string QuoteIdentifier(string identifier)
     {
-        // Simple quoting with double quotes (works for both SQL Server and PostgreSQL)
+        // Handle schema-qualified names like "dbo.Users" → "dbo"."Users"
+        var parts = identifier.Split('.', 2);
+        if (parts.Length == 2)
+        {
+            return $"\"{parts[0].Replace("\"", "\"\"")}\".\"{parts[1].Replace("\"", "\"\"")}\"";
+        }
+
         return $"\"{identifier.Replace("\"", "\"\"")}\"";
     }
 }
