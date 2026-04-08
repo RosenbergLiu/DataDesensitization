@@ -119,11 +119,17 @@
                         class="absolute z-10 mt-1 w-full max-h-48 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
                         @foreach (var col in columnSuggestions)
                         {
-                            <li role="option" class="px-3.5 py-2 text-sm text-gray-900 cursor-pointer hover:bg-brand-50 hover:text-brand-700 transition-colors"
-                                @onmousedown="() => SelectColumn(col.ColumnName)"
-                                @onmousedown:preventDefault>
+                            var isFk = col.IsForeignKey;
+                            <li role="option" class="@(isFk ? "px-3.5 py-2 text-sm text-gray-400 cursor-not-allowed bg-gray-50" : "px-3.5 py-2 text-sm text-gray-900 cursor-pointer hover:bg-brand-50 hover:text-brand-700 transition-colors")"
+                                @onmousedown="() => { if (!isFk) SelectColumn(col.ColumnName); }"
+                                @onmousedown:preventDefault
+                                aria-disabled="@isFk">
                                 <span>@col.ColumnName</span>
                                 <span class="ml-2 text-xs text-gray-400">@col.DataType</span>
+                                @if (isFk)
+                                {
+                                    <span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700" title="Foreign key — references @col.ReferencedTable">FK</span>
+                                }
                             </li>
                         }
                     </ul>
@@ -386,8 +392,32 @@
             return;
         }
 
+        // Check if the selected column is a foreign key
+        var selectedColumn = allColumnsForTable
+            .FirstOrDefault(c => string.Equals(c.ColumnName, newColumnName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        if (selectedColumn is not null && selectedColumn.IsForeignKey)
+        {
+            var refInfo = selectedColumn.ReferencedTable is not null
+                ? $" (references {selectedColumn.ReferencedTable})"
+                : string.Empty;
+            validationError = $"Cannot add a rule to '{newColumnName}' because it is a foreign key{refInfo}. Modifying foreign key values would break referential integrity.";
+            return;
+        }
+
         var parameters = BuildParameters();
         var rule = new DesensitizationRule(newTableName.Trim(), newColumnName.Trim(), selectedStrategy, parameters);
+
+        if (selectedColumn is not null)
+        {
+            var validation = RuleConfigurationService.ValidateRule(rule, selectedColumn);
+            if (!validation.IsValid)
+            {
+                validationError = validation.ErrorMessage;
+                return;
+            }
+        }
+
         var result = RuleConfigurationService.AddRule(rule);
 
         if (!result.IsValid)

@@ -42,6 +42,15 @@ public class RuleConfigurationService : IRuleConfigurationService
 
     public ValidationResult ValidateRule(DesensitizationRule rule, ColumnInfo column)
     {
+        if (column.IsForeignKey)
+        {
+            var refInfo = column.ReferencedTable is not null
+                ? $" (references {column.ReferencedTable})"
+                : string.Empty;
+            return new ValidationResult(false,
+                $"Cannot add a desensitization rule to column '{rule.TableName}.{rule.ColumnName}' because it is a foreign key{refInfo}. Modifying foreign key values would break referential integrity.");
+        }
+
         var strategy = CreateStrategy(rule.Strategy);
         if (!strategy.IsCompatibleWith(column))
         {
@@ -64,6 +73,10 @@ public class RuleConfigurationService : IRuleConfigurationService
 
             foreach (var column in columns)
             {
+                // Skip foreign key columns — desensitizing them would break referential integrity
+                if (column.IsForeignKey)
+                    continue;
+
                 foreach (var (pattern, strategy, parameters) in DetectionPatterns)
                 {
                     if (pattern.IsMatch(column.ColumnName))

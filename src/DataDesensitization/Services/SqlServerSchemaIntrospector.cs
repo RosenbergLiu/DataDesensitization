@@ -43,6 +43,9 @@ public class SqlServerSchemaIntrospector : ISchemaIntrospector
         var schema = parts.Length > 1 ? parts[0] : null;
         var table = parts.Length > 1 ? parts[1] : parts[0];
 
+        // First, collect foreign key columns for this table
+        var fkColumns = await GetForeignKeyColumnsAsync(schema, table, ct);
+
         using var command = _connection.CreateCommand();
 
         if (schema is not null)
@@ -75,14 +78,84 @@ public class SqlServerSchemaIntrospector : ISchemaIntrospector
         using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
+            var columnName = reader.GetString(0);
+            fkColumns.TryGetValue(columnName, out var referencedTable);
+
             columns.Add(new ColumnInfo(
-                reader.GetString(0),
+                columnName,
                 reader.GetString(1),
                 reader.GetString(2) == "YES",
-                reader.IsDBNull(3) ? null : Convert.ToInt32(reader.GetValue(3))));
+                reader.IsDBNull(3) ? null : Convert.ToInt32(reader.GetValue(3)),
+                IsForeignKey: referencedTable is not null,
+                ReferencedTable: referencedTable));
         }
 
         return columns;
+    }
+
+    private async Task<Dictionary<string, string>> GetForeignKeyColumnsAsync(string? schema, string table, CancellationToken ct)
+    {
+        var fkColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        using var command = _connection.CreateCommand();
+
+        if (schema is not null)
+        {
+            command.CommandText = @"
+                SELECT
+                    ccu_fk.COLUMN_NAME,
+                    ccu_pk.TABLE_SCHEMA + '.' + ccu_pk.TABLE_NAME
+                FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+                INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ccu_fk
+                    ON rc.CONSTRAINT_NAME = ccu_fk.CONSTRAINT_NAME
+                    AND rc.CONSTRAINT_SCHEMA = ccu_fk.CONSTRAINT_SCHEMA
+                INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ccu_pk
+                    ON rc.UNIQUE_CONSTRAINT_NAME = ccu_pk.CONSTRAINT_NAME
+                    AND rc.UNIQUE_CONSTRAINT_SCHEMA = ccu_pk.CONSTRAINT_SCHEMA
+                WHERE ccu_fk.TABLE_SCHEMA = @Schema AND ccu_fk.TABLE_NAME = @TableName";
+
+            var schemaParam = command.CreateParameter();
+            schemaParam.ParameterName = "@Schema";
+            schemaParam.Value = schema;
+            command.Parameters.Add(schemaParam);
+        }
+        else
+        {
+            command.CommandText = @"
+                SELECT
+                    ccu_fk.COLUMN_NAME,
+                    ccu_pk.TABLE_SCHEMA + '.' + ccu_pk.TABLE_NAME
+                FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+                INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ccu_fk
+                    ON rc.CONSTRAINT_NAME = ccu_fk.CONSTRAINT_NAME
+                    AND rc.CONSTRAINT_SCHEMA = ccu_fk.CONSTRAINT_SCHEMA
+                INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ccu_pk
+                    ON rc.UNIQUE_CONSTRAINT_NAME = ccu_pk.CONSTRAINT_NAME
+                    AND rc.UNIQUE_CONSTRAINT_SCHEMA = ccu_pk.CONSTRAINT_SCHEMA
+                WHERE ccu_fk.TABLE_NAME = @TableName";
+        }
+
+        var param = command.CreateParameter();
+        param.ParameterName = "@TableName";
+        param.Value = table;
+        command.Parameters.Add(param);
+
+        try
+        {
+            using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var columnName = reader.GetString(0);
+                var referencedTable = reader.GetString(1);
+                fkColumns.TryAdd(columnName, referencedTable);
+            }
+        }
+        catch (DbException)
+        {
+            // If FK metadata query fails, proceed without FK info
+        }
+
+        return fkColumns;
     }
 
     public async Task<MigrationRecord?> GetNewestMigrationAsync(CancellationToken ct = default)

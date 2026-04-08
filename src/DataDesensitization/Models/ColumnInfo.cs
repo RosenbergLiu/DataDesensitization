@@ -4,4 +4,6 @@ public record ColumnInfo(
     string ColumnName,
     string DataType,
     bool IsNullable,
-    int? MaxLength);
+    int? MaxLength,
+    bool IsForeignKey = false,
+    string? ReferencedTable = null);
