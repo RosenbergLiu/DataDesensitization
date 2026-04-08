@@ -69,7 +69,7 @@ public class RuleConfigurationService : IRuleConfigurationService
                     if (pattern.IsMatch(column.ColumnName))
                     {
                         detectedRules.Add(new DesensitizationRule(
-                            table.TableName,
+                            key,
                             column.ColumnName,
                             strategy,
                             parameters));

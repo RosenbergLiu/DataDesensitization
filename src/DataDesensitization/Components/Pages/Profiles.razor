@@ -3,12 +3,13 @@
 @inject IProfileManager ProfileManager
 @inject IRuleConfigurationService RuleConfigurationService
 @inject IConnectionManager ConnectionManager
+@inject IJSRuntime JS
 
 <PageTitle>Profile Management</PageTitle>
 
 <div class="max-w-5xl">
     <h2 class="text-2xl font-bold text-gray-900">Profile Management</h2>
-    <p class="mt-1 text-sm text-gray-500">Save, load, and share rule configurations.</p>
+    <p class="mt-1 text-sm text-gray-500">Export and import rule configurations as JSON files.</p>
 
     @if (successMessage is not null)
     {
@@ -45,66 +46,35 @@
     }
 
     <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
-        <!-- Save Profile -->
-        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <div class="bg-gray-50 px-5 py-3 border-b border-gray-200">
-                <h3 class="text-sm font-semibold text-gray-900">Save Profile</h3>
-            </div>
-            <div class="p-5 space-y-4">
-                <div>
-                    <label for="saveProfileName" class="block text-sm font-medium text-gray-700 mb-1.5">Profile Name</label>
-                    <input type="text" id="saveProfileName"
-                           class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
-                           @bind="saveProfileName" placeholder="Enter profile name" />
-                </div>
-                <div class="flex items-center justify-between">
-                    <button class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            @onclick="SaveProfileAsync"
-                            disabled="@(string.IsNullOrWhiteSpace(saveProfileName) || RuleConfigurationService.Rules.Count == 0)">
-                        Save Profile
-                    </button>
-                    <span class="text-xs text-gray-500">@RuleConfigurationService.Rules.Count rule(s)</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Load Profile -->
-        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <div class="bg-gray-50 px-5 py-3 border-b border-gray-200">
-                <h3 class="text-sm font-semibold text-gray-900">Load Profile</h3>
-            </div>
-            <div class="p-5 space-y-4">
-                <div>
-                    <label for="loadProfileName" class="block text-sm font-medium text-gray-700 mb-1.5">Profile Name</label>
-                    <input type="text" id="loadProfileName"
-                           class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
-                           @bind="loadProfileName" placeholder="Enter profile name" />
-                </div>
-                <button class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        @onclick="LoadProfileAsync"
-                        disabled="@(string.IsNullOrWhiteSpace(loadProfileName))">
-                    Load Profile
-                </button>
-            </div>
-        </div>
-
         <!-- Export Profile -->
         <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="bg-gray-50 px-5 py-3 border-b border-gray-200">
                 <h3 class="text-sm font-semibold text-gray-900">Export Profile</h3>
             </div>
             <div class="p-5 space-y-4">
+                <p class="text-sm text-gray-500">Download current rules and migration history as a JSON file.</p>
                 <div>
-                    <label for="exportFilePath" class="block text-sm font-medium text-gray-700 mb-1.5">File Path</label>
-                    <input type="text" id="exportFilePath"
+                    <label for="exportName" class="block text-sm font-medium text-gray-700 mb-1.5">Profile Name</label>
+                    <input type="text" id="exportName"
                            class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
-                           @bind="exportFilePath" placeholder="e.g. C:\profiles\my-profile.json" />
+                           @bind="exportName" placeholder="Enter profile name" />
                 </div>
-                <button class="inline-flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-600 shadow-sm hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        @onclick="ExportProfileAsync"
-                        disabled="@(string.IsNullOrWhiteSpace(exportFilePath) || RuleConfigurationService.Rules.Count == 0 || ConnectionManager.Status != ConnectionStatus.Connected)">
-                    Export Profile
-                </button>
+                <div class="flex items-center justify-between">
+                    <button class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            @onclick="ExportProfileAsync"
+                            disabled="@(string.IsNullOrWhiteSpace(exportName) || RuleConfigurationService.Rules.Count == 0 || ConnectionManager.Status != ConnectionStatus.Connected || isExporting)">
+                        @if (isExporting)
+                        {
+                            <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            <span>Exporting...</span>
+                        }
+                        else
+                        {
+                            <span>Export &amp; Download</span>
+                        }
+                    </button>
+                    <span class="text-xs text-gray-500">@RuleConfigurationService.Rules.Count rule(s)</span>
+                </div>
                 @if (ConnectionManager.Status != ConnectionStatus.Connected)
                 {
                     <p class="text-xs text-amber-600">A database connection is required for export.</p>
@@ -118,27 +88,40 @@
                 <h3 class="text-sm font-semibold text-gray-900">Import Profile</h3>
             </div>
             <div class="p-5 space-y-4">
+                <p class="text-sm text-gray-500">Upload a JSON profile. Migration history must match the connected database.</p>
                 <div>
-                    <label for="importFilePath" class="block text-sm font-medium text-gray-700 mb-1.5">File Path</label>
-                    <input type="text" id="importFilePath"
-                           class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-colors"
-                           @bind="importFilePath" placeholder="e.g. C:\profiles\my-profile.json" />
+                    <label for="importFile" class="block text-sm font-medium text-gray-700 mb-1.5">Select File</label>
+                    <InputFile id="importFile" OnChange="OnFileSelected"
+                               accept=".json"
+                               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 transition-colors" />
                 </div>
                 <button class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         @onclick="ImportProfileAsync"
-                        disabled="@(string.IsNullOrWhiteSpace(importFilePath))">
-                    Import Profile
+                        disabled="@(importFileBytes is null || ConnectionManager.Status != ConnectionStatus.Connected || isImporting)">
+                    @if (isImporting)
+                    {
+                        <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                        <span>Importing...</span>
+                    }
+                    else
+                    {
+                        <span>Import Profile</span>
+                    }
                 </button>
+                @if (ConnectionManager.Status != ConnectionStatus.Connected)
+                {
+                    <p class="text-xs text-amber-600">A database connection is required for import.</p>
+                }
             </div>
         </div>
     </div>
 </div>
 
 @code {
-    private string saveProfileName = string.Empty;
-    private string loadProfileName = string.Empty;
-    private string exportFilePath = string.Empty;
-    private string importFilePath = string.Empty;
+    private string exportName = string.Empty;
+    private byte[]? importFileBytes;
+    private bool isExporting;
+    private bool isImporting;
 
     private string? successMessage;
     private string? errorMessage;
@@ -151,80 +134,63 @@
         warningMessages.Clear();
     }
 
-    private async Task SaveProfileAsync()
-    {
-        ClearMessages();
-        try
-        {
-            await ProfileManager.SaveProfileAsync(saveProfileName.Trim(), RuleConfigurationService.Rules);
-            successMessage = $"Profile '{saveProfileName.Trim()}' saved successfully with {RuleConfigurationService.Rules.Count} rule(s).";
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Failed to save profile: {ex.Message}";
-        }
-    }
-
-    private async Task LoadProfileAsync()
-    {
-        ClearMessages();
-        try
-        {
-            var result = await ProfileManager.LoadProfileAsync(loadProfileName.Trim());
-
-            foreach (var rule in RuleConfigurationService.Rules.ToList())
-            {
-                RuleConfigurationService.RemoveRule(rule.TableName, rule.ColumnName);
-            }
-
-            foreach (var rule in result.MatchedRules)
-            {
-                RuleConfigurationService.AddRule(rule);
-            }
-
-            successMessage = $"Profile '{loadProfileName.Trim()}' loaded. {result.MatchedRules.Count} rule(s) applied.";
-
-            if (result.UnmatchedRules.Count > 0)
-            {
-                foreach (var rule in result.UnmatchedRules)
-                {
-                    warningMessages.Add($"{rule.TableName}.{rule.ColumnName} ({rule.Strategy}) — column not found in current schema.");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Failed to load profile: {ex.Message}";
-        }
-    }
-
     private async Task ExportProfileAsync()
     {
         ClearMessages();
+        isExporting = true;
+
         try
         {
-            await ProfileManager.ExportProfileAsync(
-                exportFilePath.Trim(),
-                RuleConfigurationService.Rules,
-                string.Empty);
-            successMessage = $"Profile exported to '{exportFilePath.Trim()}' with {RuleConfigurationService.Rules.Count} rule(s).";
+            var bytes = await ProfileManager.ExportProfileAsync(
+                exportName.Trim(),
+                RuleConfigurationService.Rules);
+
+            var fileName = $"{exportName.Trim()}.json";
+            await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, bytes);
+
+            successMessage = $"Profile '{exportName.Trim()}' exported with {RuleConfigurationService.Rules.Count} rule(s).";
         }
         catch (Exception ex)
         {
             errorMessage = $"Failed to export profile: {ex.Message}";
+        }
+        finally
+        {
+            isExporting = false;
+        }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        ClearMessages();
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            importFileBytes = ms.ToArray();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to read file: {ex.Message}";
+            importFileBytes = null;
         }
     }
 
     private async Task ImportProfileAsync()
     {
         ClearMessages();
+        if (importFileBytes is null) return;
+
+        isImporting = true;
+
         try
         {
-            var result = await ProfileManager.ImportProfileAsync(importFilePath.Trim());
+            var result = await ProfileManager.ImportProfileAsync(importFileBytes);
 
             if (!result.Success)
             {
-                errorMessage = result.ErrorMessage ?? "Import failed due to schema version mismatch.";
+                errorMessage = result.ErrorMessage ?? "Import failed due to migration history mismatch.";
                 return;
             }
 
@@ -258,6 +224,10 @@
         catch (Exception ex)
         {
             errorMessage = $"Failed to import profile: {ex.Message}";
+        }
+        finally
+        {
+            isImporting = false;
         }
     }
 }

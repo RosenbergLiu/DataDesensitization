@@ -37,6 +37,19 @@
 <body class="h-full">
     <Routes />
     <script src="_framework/blazor.web.js"></script>
+    <script>
+        function downloadFileFromBytes(fileName, bytes) {
+            var blob = new Blob([new Uint8Array(bytes)], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
 </body>
 
 </html>

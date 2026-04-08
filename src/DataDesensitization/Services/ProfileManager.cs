@@ -7,8 +7,6 @@ namespace DataDesensitization.Services;
 public class ProfileManager : IProfileManager
 {
     private readonly ISchemaIntrospector _introspector;
-    private readonly IConnectionManager _connectionManager;
-    private readonly string _storageDir;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -18,112 +16,48 @@ public class ProfileManager : IProfileManager
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public ProfileManager(
-        ISchemaIntrospector introspector,
-        IConnectionManager connectionManager,
-        string? storageDir = null)
+    public ProfileManager(ISchemaIntrospector introspector)
     {
         _introspector = introspector;
-        _connectionManager = connectionManager;
-        _storageDir = storageDir ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "profiles");
     }
 
-    public async Task SaveProfileAsync(string name, IReadOnlyList<DesensitizationRule> rules)
+    public async Task<byte[]> ExportProfileAsync(string name, IReadOnlyList<DesensitizationRule> rules)
     {
+        var migrations = await _introspector.GetAllMigrationsAsync();
+
         var profile = new Profile
         {
             Name = name,
+            MigrationHistory = migrations,
             Rules = rules.ToList()
         };
 
-        var json = JsonSerializer.Serialize(profile, JsonOptions);
-
-        Directory.CreateDirectory(_storageDir);
-        var filePath = Path.Combine(_storageDir, $"{name}.json");
-        await File.WriteAllTextAsync(filePath, json);
+        return JsonSerializer.SerializeToUtf8Bytes(profile, JsonOptions);
     }
 
-    public async Task<ProfileLoadResult> LoadProfileAsync(string name)
+    public async Task<ProfileImportResult> ImportProfileAsync(byte[] jsonBytes)
     {
-        var filePath = Path.Combine(_storageDir, $"{name}.json");
-        var json = await File.ReadAllTextAsync(filePath);
-        var profile = JsonSerializer.Deserialize<Profile>(json, JsonOptions)
+        var profile = JsonSerializer.Deserialize<Profile>(jsonBytes, JsonOptions)
             ?? throw new InvalidOperationException("Failed to deserialize profile.");
 
-        var tables = await _introspector.GetTablesAsync();
+        var currentMigrations = await _introspector.GetAllMigrationsAsync();
 
-        var schemaColumns = new HashSet<(string Table, string Column)>();
-        foreach (var table in tables)
+        if (!MigrationHistoriesMatch(profile.MigrationHistory, currentMigrations))
         {
-            var fullTableName = string.IsNullOrEmpty(table.SchemaName)
-                ? table.TableName
-                : $"{table.SchemaName}.{table.TableName}";
-
-            var columns = await _introspector.GetColumnsAsync(fullTableName);
-            foreach (var col in columns)
-            {
-                schemaColumns.Add((fullTableName, col.ColumnName));
-            }
-        }
-
-        var matched = new List<DesensitizationRule>();
-        var unmatched = new List<DesensitizationRule>();
-
-        foreach (var rule in profile.Rules)
-        {
-            if (schemaColumns.Contains((rule.TableName, rule.ColumnName)))
-            {
-                matched.Add(rule);
-            }
-            else
-            {
-                unmatched.Add(rule);
-            }
-        }
-
-        return new ProfileLoadResult(matched, unmatched);
-    }
-
-    public async Task ExportProfileAsync(string filePath, IReadOnlyList<DesensitizationRule> rules, string connectionString)
-    {
-        var migration = await _introspector.GetNewestMigrationAsync();
-
-        var profile = new Profile
-        {
-            Name = Path.GetFileNameWithoutExtension(filePath),
-            ConnectionString = connectionString,
-            MigrationRecord = migration,
-            Rules = rules.ToList()
-        };
-
-        var json = JsonSerializer.Serialize(profile, JsonOptions);
-        await File.WriteAllTextAsync(filePath, json);
-    }
-
-    public async Task<ProfileImportResult> ImportProfileAsync(string filePath)
-    {
-        var json = await File.ReadAllTextAsync(filePath);
-        var profile = JsonSerializer.Deserialize<Profile>(json, JsonOptions)
-            ?? throw new InvalidOperationException("Failed to deserialize profile.");
-
-        var currentMigration = await _introspector.GetNewestMigrationAsync();
-
-        if (!MigrationRecordsMatch(profile.MigrationRecord, currentMigration))
-        {
-            var expected = profile.MigrationRecord is not null
-                ? $"{profile.MigrationRecord.MigrationId} ({profile.MigrationRecord.ProductVersion})"
+            var expected = profile.MigrationHistory.Count > 0
+                ? $"{profile.MigrationHistory.Count} migration(s), latest: {profile.MigrationHistory[^1].MigrationId}"
                 : "none";
-            var actual = currentMigration is not null
-                ? $"{currentMigration.MigrationId} ({currentMigration.ProductVersion})"
+            var actual = currentMigrations.Count > 0
+                ? $"{currentMigrations.Count} migration(s), latest: {currentMigrations[^1].MigrationId}"
                 : "none";
 
             return new ProfileImportResult(
                 false,
-                $"Schema version mismatch. Profile migration: {expected}, target database migration: {actual}.",
+                $"Migration history mismatch. Profile: {expected}. Database: {actual}.",
                 null);
         }
 
-        // Match rules against current schema (same logic as LoadProfileAsync)
+        // Match rules against current schema
         var tables = await _introspector.GetTablesAsync();
 
         var schemaColumns = new HashSet<(string Table, string Column)>();
@@ -146,23 +80,27 @@ public class ProfileManager : IProfileManager
         foreach (var rule in profile.Rules)
         {
             if (schemaColumns.Contains((rule.TableName, rule.ColumnName)))
-            {
                 matched.Add(rule);
-            }
             else
-            {
                 unmatched.Add(rule);
-            }
         }
 
         var loadResult = new ProfileLoadResult(matched, unmatched);
         return new ProfileImportResult(true, null, loadResult);
     }
 
-    private static bool MigrationRecordsMatch(MigrationRecord? a, MigrationRecord? b)
+    private static bool MigrationHistoriesMatch(List<MigrationRecord> exported, List<MigrationRecord> current)
     {
-        if (a is null && b is null) return true;
-        if (a is null || b is null) return false;
-        return a.MigrationId == b.MigrationId && a.ProductVersion == b.ProductVersion;
+        if (exported.Count == 0 && current.Count == 0) return true;
+        if (exported.Count != current.Count) return false;
+
+        for (int i = 0; i < exported.Count; i++)
+        {
+            if (exported[i].MigrationId != current[i].MigrationId ||
+                exported[i].ProductVersion != current[i].ProductVersion)
+                return false;
+        }
+
+        return true;
     }
 }

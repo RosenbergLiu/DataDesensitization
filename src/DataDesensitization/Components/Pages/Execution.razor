@@ -2,6 +2,8 @@
 @rendermode InteractiveServer
 @inject IDesensitizationEngine DesensitizationEngine
 @inject IRuleConfigurationService RuleConfigurationService
+@inject IReportSerializer ReportSerializer
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Execute Desensitization</PageTitle>
@@ -172,6 +174,11 @@
         {
             report = await DesensitizationEngine.ExecuteAsync(
                 RuleConfigurationService.Rules, cts.Token);
+
+            if (report is not null)
+            {
+                await DownloadReportAsync(report);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -196,6 +203,15 @@
     private void CancelExecution()
     {
         cts?.Cancel();
+    }
+
+    private async Task DownloadReportAsync(ExecutionReport executionReport)
+    {
+        var json = ReportSerializer.Serialize(executionReport);
+        var fileName = $"desensitization-report-{executionReport.StartedAt:yyyyMMdd-HHmmss}.json";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+
+        await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, bytes);
     }
 
     private void OnProgressChanged(ProgressInfo progress)

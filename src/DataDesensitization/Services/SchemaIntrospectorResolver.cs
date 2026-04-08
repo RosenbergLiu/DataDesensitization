@@ -26,6 +26,9 @@ public class SchemaIntrospectorResolver : ISchemaIntrospector
     public Task<MigrationRecord?> GetNewestMigrationAsync(CancellationToken ct = default)
         => GetIntrospector().GetNewestMigrationAsync(ct);
 
+    public Task<List<MigrationRecord>> GetAllMigrationsAsync(CancellationToken ct = default)
+        => GetIntrospector().GetAllMigrationsAsync(ct);
+
     private ISchemaIntrospector GetIntrospector()
     {
         var connection = _connectionManager.CurrentConnection

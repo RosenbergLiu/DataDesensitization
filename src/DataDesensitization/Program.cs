@@ -28,11 +28,10 @@ builder.Services.AddSingleton<IRuleConfigurationService, RuleConfigurationServic
 // Register DesensitizationEngine
 builder.Services.AddSingleton<IDesensitizationEngine, DesensitizationEngine>();
 
-// Register ProfileManager (uses factory to handle optional storageDir parameter)
+// Register ProfileManager
 builder.Services.AddSingleton<IProfileManager>(sp =>
     new ProfileManager(
-        sp.GetRequiredService<ISchemaIntrospector>(),
-        sp.GetRequiredService<IConnectionManager>()));
+        sp.GetRequiredService<ISchemaIntrospector>()));
 
 // Register ReportSerializer (stateless)
 builder.Services.AddSingleton<IReportSerializer, ReportSerializer>();

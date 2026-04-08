@@ -113,4 +113,32 @@ public class PostgreSqlSchemaIntrospector : ISchemaIntrospector
             return null;
         }
     }
+
+    public async Task<List<MigrationRecord>> GetAllMigrationsAsync(CancellationToken ct = default)
+    {
+        var migrations = new List<MigrationRecord>();
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT ""MigrationId"", ""ProductVersion""
+            FROM ""__EFMigrationsHistory""
+            ORDER BY ""MigrationId""";
+
+        try
+        {
+            using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                migrations.Add(new MigrationRecord(
+                    reader.GetString(0),
+                    reader.GetString(1)));
+            }
+        }
+        catch (DbException)
+        {
+            // Table may not exist if EF Core migrations are not used
+        }
+
+        return migrations;
+    }
 }
