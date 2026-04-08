@@ -1,0 +1,247 @@
+@page "/profiles"
+@rendermode InteractiveServer
+@inject IProfileManager ProfileManager
+@inject IRuleConfigurationService RuleConfigurationService
+@inject IConnectionManager ConnectionManager
+
+<PageTitle>Profile Management</PageTitle>
+
+<h3>Profile Management</h3>
+
+@if (successMessage is not null)
+{
+    <div class="alert alert-success mt-2" role="alert">@successMessage</div>
+}
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger mt-2" role="alert">@errorMessage</div>
+}
+
+@if (warningMessages.Count > 0)
+{
+    <div class="alert alert-warning mt-2" role="alert">
+        <strong>Unmatched Rules:</strong>
+        <ul class="mb-0 mt-1">
+            @foreach (var warning in warningMessages)
+            {
+                <li>@warning</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="row mt-3">
+    <!-- Save Profile -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Save Profile</h5></div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="saveProfileName" class="form-label">Profile Name</label>
+                    <input type="text" class="form-control" id="saveProfileName"
+                           @bind="saveProfileName" placeholder="Enter profile name" />
+                </div>
+                <button class="btn btn-primary" @onclick="SaveProfileAsync"
+                        disabled="@(string.IsNullOrWhiteSpace(saveProfileName) || RuleConfigurationService.Rules.Count == 0)">
+                    Save Profile
+                </button>
+                <div class="form-text mt-1">
+                    Current rules: @RuleConfigurationService.Rules.Count
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Profile -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Load Profile</h5></div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="loadProfileName" class="form-label">Profile Name</label>
+                    <input type="text" class="form-control" id="loadProfileName"
+                           @bind="loadProfileName" placeholder="Enter profile name" />
+                </div>
+                <button class="btn btn-secondary" @onclick="LoadProfileAsync"
+                        disabled="@(string.IsNullOrWhiteSpace(loadProfileName))">
+                    Load Profile
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Export Profile -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Export Profile</h5></div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="exportFilePath" class="form-label">File Path</label>
+                    <input type="text" class="form-control" id="exportFilePath"
+                           @bind="exportFilePath" placeholder="e.g. C:\profiles\my-profile.json" />
+                </div>
+                <button class="btn btn-outline-primary" @onclick="ExportProfileAsync"
+                        disabled="@(string.IsNullOrWhiteSpace(exportFilePath) || RuleConfigurationService.Rules.Count == 0 || ConnectionManager.Status != ConnectionStatus.Connected)">
+                    Export Profile
+                </button>
+                @if (ConnectionManager.Status != ConnectionStatus.Connected)
+                {
+                    <div class="form-text text-warning mt-1">
+                        A database connection is required for export.
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Profile -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Import Profile</h5></div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="importFilePath" class="form-label">File Path</label>
+                    <input type="text" class="form-control" id="importFilePath"
+                           @bind="importFilePath" placeholder="e.g. C:\profiles\my-profile.json" />
+                </div>
+                <button class="btn btn-outline-secondary" @onclick="ImportProfileAsync"
+                        disabled="@(string.IsNullOrWhiteSpace(importFilePath))">
+                    Import Profile
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string saveProfileName = string.Empty;
+    private string loadProfileName = string.Empty;
+    private string exportFilePath = string.Empty;
+    private string importFilePath = string.Empty;
+
+    private string? successMessage;
+    private string? errorMessage;
+    private List<string> warningMessages = new();
+
+    private void ClearMessages()
+    {
+        successMessage = null;
+        errorMessage = null;
+        warningMessages.Clear();
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        ClearMessages();
+        try
+        {
+            await ProfileManager.SaveProfileAsync(saveProfileName.Trim(), RuleConfigurationService.Rules);
+            successMessage = $"Profile '{saveProfileName.Trim()}' saved successfully with {RuleConfigurationService.Rules.Count} rule(s).";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to save profile: {ex.Message}";
+        }
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        ClearMessages();
+        try
+        {
+            var result = await ProfileManager.LoadProfileAsync(loadProfileName.Trim());
+
+            // Clear existing rules and apply matched ones
+            foreach (var rule in RuleConfigurationService.Rules.ToList())
+            {
+                RuleConfigurationService.RemoveRule(rule.TableName, rule.ColumnName);
+            }
+
+            foreach (var rule in result.MatchedRules)
+            {
+                RuleConfigurationService.AddRule(rule);
+            }
+
+            successMessage = $"Profile '{loadProfileName.Trim()}' loaded. {result.MatchedRules.Count} rule(s) applied.";
+
+            if (result.UnmatchedRules.Count > 0)
+            {
+                foreach (var rule in result.UnmatchedRules)
+                {
+                    warningMessages.Add($"{rule.TableName}.{rule.ColumnName} ({rule.Strategy}) — column not found in current schema.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load profile: {ex.Message}";
+        }
+    }
+
+    private async Task ExportProfileAsync()
+    {
+        ClearMessages();
+        try
+        {
+            await ProfileManager.ExportProfileAsync(
+                exportFilePath.Trim(),
+                RuleConfigurationService.Rules,
+                string.Empty);
+            successMessage = $"Profile exported to '{exportFilePath.Trim()}' with {RuleConfigurationService.Rules.Count} rule(s).";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to export profile: {ex.Message}";
+        }
+    }
+
+    private async Task ImportProfileAsync()
+    {
+        ClearMessages();
+        try
+        {
+            var result = await ProfileManager.ImportProfileAsync(importFilePath.Trim());
+
+            if (!result.Success)
+            {
+                errorMessage = result.ErrorMessage ?? "Import failed due to schema version mismatch.";
+                return;
+            }
+
+            if (result.LoadResult is not null)
+            {
+                // Clear existing rules and apply matched ones
+                foreach (var rule in RuleConfigurationService.Rules.ToList())
+                {
+                    RuleConfigurationService.RemoveRule(rule.TableName, rule.ColumnName);
+                }
+
+                foreach (var rule in result.LoadResult.MatchedRules)
+                {
+                    RuleConfigurationService.AddRule(rule);
+                }
+
+                successMessage = $"Profile imported. {result.LoadResult.MatchedRules.Count} rule(s) applied.";
+
+                if (result.LoadResult.UnmatchedRules.Count > 0)
+                {
+                    foreach (var rule in result.LoadResult.UnmatchedRules)
+                    {
+                        warningMessages.Add($"{rule.TableName}.{rule.ColumnName} ({rule.Strategy}) — column not found in current schema.");
+                    }
+                }
+            }
+            else
+            {
+                successMessage = "Profile imported successfully.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to import profile: {ex.Message}";
+        }
+    }
+}

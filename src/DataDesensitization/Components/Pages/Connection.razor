@@ -1,0 +1,115 @@
+@page "/connection"
+@rendermode InteractiveServer
+@inject IConnectionManager ConnectionManager
+
+<PageTitle>Connection Management</PageTitle>
+
+<h3>Connection Management</h3>
+
+<div class="row mt-3">
+    <div class="col-md-8">
+        <div class="mb-3">
+            <label for="connectionString" class="form-label">Connection String</label>
+            <input id="connectionString" type="text" class="form-control" @bind="connectionString"
+                   placeholder="Enter connection string..." disabled="@isConnecting" />
+        </div>
+
+        <div class="mb-3">
+            <label for="provider" class="form-label">Database Provider</label>
+            <select id="provider" class="form-select" @bind="selectedProvider" disabled="@isConnecting">
+                <option value="@DatabaseProvider.SqlServer">SQL Server</option>
+                <option value="@DatabaseProvider.PostgreSql">PostgreSQL</option>
+            </select>
+        </div>
+
+        <div class="d-flex gap-2">
+            @if (ConnectionManager.Status != ConnectionStatus.Connected)
+            {
+                <button class="btn btn-primary" @onclick="ConnectAsync" disabled="@(isConnecting || string.IsNullOrWhiteSpace(connectionString))">
+                    @if (isConnecting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        <span>Connecting...</span>
+                    }
+                    else
+                    {
+                        <span>Connect</span>
+                    }
+                </button>
+            }
+            else
+            {
+                <button class="btn btn-outline-danger" @onclick="DisconnectAsync">
+                    Disconnect
+                </button>
+            }
+        </div>
+
+        @if (successMessage is not null)
+        {
+            <div class="alert alert-success mt-3" role="alert">
+                @successMessage
+            </div>
+        }
+
+        @if (errorMessage is not null)
+        {
+            <div class="alert alert-danger mt-3" role="alert">
+                @errorMessage
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string connectionString = string.Empty;
+    private DatabaseProvider selectedProvider = DatabaseProvider.SqlServer;
+    private bool isConnecting;
+    private string? successMessage;
+    private string? errorMessage;
+
+    private async Task ConnectAsync()
+    {
+        isConnecting = true;
+        successMessage = null;
+        errorMessage = null;
+
+        try
+        {
+            var result = await ConnectionManager.ConnectAsync(connectionString, selectedProvider);
+
+            if (result.Success)
+            {
+                successMessage = $"Connected to database '{result.DatabaseName}' on server '{result.ServerAddress}'.";
+            }
+            else
+            {
+                errorMessage = result.ErrorMessage ?? "Connection failed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            isConnecting = false;
+        }
+    }
+
+    private async Task DisconnectAsync()
+    {
+        successMessage = null;
+        errorMessage = null;
+
+        try
+        {
+            await ConnectionManager.DisconnectAsync();
+            successMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error disconnecting: {ex.Message}";
+        }
+    }
+}

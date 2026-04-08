@@ -1,0 +1,216 @@
+@page "/schema"
+@rendermode InteractiveServer
+@inject ISchemaService SchemaService
+@inject IRuleConfigurationService RuleConfigurationService
+
+<PageTitle>Schema Browser</PageTitle>
+
+<h3>Schema Browser</h3>
+
+<div class="row mt-3">
+    <div class="col-md-10">
+        <div class="mb-3">
+            <input type="text" class="form-control" placeholder="Search tables and columns..."
+                   @bind="searchFilter" @bind:event="oninput" @bind:after="OnSearchChangedAsync" />
+        </div>
+
+        @if (errorMessage is not null)
+        {
+            <div class="alert alert-danger" role="alert">@errorMessage</div>
+        }
+
+        @if (isLoading)
+        {
+            <div class="d-flex align-items-center">
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                <span>Loading schema...</span>
+            </div>
+        }
+        else if (tables.Count == 0)
+        {
+            <p class="text-muted">No tables found. Make sure you are connected to a database.</p>
+        }
+        else
+        {
+            <div class="accordion" id="schemaAccordion">
+                @foreach (var table in tables)
+                {
+                    var tableKey = $"{table.SchemaName}_{table.TableName}";
+                    var headingId = $"heading-{tableKey}";
+                    var collapseId = $"collapse-{tableKey}";
+                    var isExpanded = expandedTables.Contains(tableKey);
+
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="@headingId">
+                            <button class="accordion-button @(isExpanded ? "" : "collapsed")" type="button"
+                                    @onclick="() => ToggleTableAsync(table, tableKey)">
+                                <strong>@table.SchemaName.@table.TableName</strong>
+                            </button>
+                        </h2>
+                        <div id="@collapseId" class="accordion-collapse collapse @(isExpanded ? "show" : "")">
+                            <div class="accordion-body p-0">
+                                @if (columnsByTable.TryGetValue(tableKey, out var columns))
+                                {
+                                    <table class="table table-sm table-striped mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Column</th>
+                                                <th>Data Type</th>
+                                                <th>Nullable</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var col in FilterColumns(columns))
+                                            {
+                                                var hasRule = HasAssignedRule(table.TableName, col.ColumnName);
+                                                var isSensitive = IsAutoDetectedSensitive(col.ColumnName);
+
+                                                <tr class="@(isSensitive && !hasRule ? "table-warning" : "")">
+                                                    <td>@col.ColumnName</td>
+                                                    <td><code>@col.DataType</code>@(col.MaxLength.HasValue ? $"({col.MaxLength})" : "")</td>
+                                                    <td>
+                                                        @if (col.IsNullable)
+                                                        {
+                                                            <span class="badge bg-secondary">Nullable</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge bg-dark">Not Null</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        @if (hasRule)
+                                                        {
+                                                            <span class="badge bg-success" title="Desensitization rule assigned">
+                                                                &#x2714; Rule Assigned
+                                                            </span>
+                                                        }
+                                                        else if (isSensitive)
+                                                        {
+                                                            <span class="badge bg-warning text-dark" title="Auto-detected as sensitive">
+                                                                &#x26A0; Sensitive
+                                                            </span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                                else
+                                {
+                                    <div class="p-3">
+                                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                        Loading columns...
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string searchFilter = string.Empty;
+    private bool isLoading;
+    private string? errorMessage;
+    private List<TableInfo> tables = new();
+    private HashSet<string> expandedTables = new();
+    private Dictionary<string, List<ColumnInfo>> columnsByTable = new();
+
+    private static readonly System.Text.RegularExpressions.Regex[] SensitivePatterns =
+    [
+        new(@"(?i)(first|last|full)?_?name", System.Text.RegularExpressions.RegexOptions.Compiled),
+        new(@"(?i)e?mail", System.Text.RegularExpressions.RegexOptions.Compiled),
+        new(@"(?i)phone|mobile|fax", System.Text.RegularExpressions.RegexOptions.Compiled),
+        new(@"(?i)address|street|city|zip|postal", System.Text.RegularExpressions.RegexOptions.Compiled),
+        new(@"(?i)ssn|social_security", System.Text.RegularExpressions.RegexOptions.Compiled),
+        new(@"(?i)credit_card|card_number|ccn", System.Text.RegularExpressions.RegexOptions.Compiled),
+        new(@"(?i)password|pwd|pass_hash", System.Text.RegularExpressions.RegexOptions.Compiled),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTablesAsync();
+    }
+
+    private async Task LoadTablesAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            tables = string.IsNullOrWhiteSpace(searchFilter)
+                ? await SchemaService.GetTablesAsync()
+                : await SchemaService.SearchTablesAsync(searchFilter);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load schema: {ex.Message}";
+            tables = new();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OnSearchChangedAsync()
+    {
+        expandedTables.Clear();
+        columnsByTable.Clear();
+        await LoadTablesAsync();
+    }
+
+    private async Task ToggleTableAsync(TableInfo table, string tableKey)
+    {
+        if (expandedTables.Contains(tableKey))
+        {
+            expandedTables.Remove(tableKey);
+            return;
+        }
+
+        expandedTables.Add(tableKey);
+
+        if (!columnsByTable.ContainsKey(tableKey))
+        {
+            try
+            {
+                var fullName = $"{table.SchemaName}.{table.TableName}";
+                var columns = await SchemaService.GetColumnsAsync(fullName);
+                columnsByTable[tableKey] = columns;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Failed to load columns for {table.TableName}: {ex.Message}";
+            }
+        }
+    }
+
+    private List<ColumnInfo> FilterColumns(List<ColumnInfo> columns)
+    {
+        if (string.IsNullOrWhiteSpace(searchFilter))
+            return columns;
+
+        return columns
+            .Where(c => c.ColumnName.Contains(searchFilter, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private bool HasAssignedRule(string tableName, string columnName)
+    {
+        return RuleConfigurationService.Rules.Any(r =>
+            string.Equals(r.TableName, tableName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.ColumnName, columnName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsAutoDetectedSensitive(string columnName)
+    {
+        return SensitivePatterns.Any(p => p.IsMatch(columnName));
+    }
+}

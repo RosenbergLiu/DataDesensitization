@@ -1,0 +1,333 @@
+@page "/rules"
+@rendermode InteractiveServer
+@inject IRuleConfigurationService RuleConfigurationService
+@inject ISchemaService SchemaService
+
+<PageTitle>Rule Configuration</PageTitle>
+
+<h3>Rule Configuration</h3>
+
+@if (validationError is not null)
+{
+    <div class="alert alert-danger mt-2" role="alert">@validationError</div>
+}
+
+@if (successMessage is not null)
+{
+    <div class="alert alert-success mt-2" role="alert">@successMessage</div>
+}
+
+<div class="row mt-3">
+    <div class="col-md-12">
+        <h5>Current Rules</h5>
+        @if (RuleConfigurationService.Rules.Count == 0)
+        {
+            <p class="text-muted">No rules configured yet.</p>
+        }
+        else
+        {
+            <table class="table table-striped table-sm">
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Column</th>
+                        <th>Strategy</th>
+                        <th>Parameters</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rule in RuleConfigurationService.Rules)
+                    {
+                        <tr>
+                            <td>@rule.TableName</td>
+                            <td>@rule.ColumnName</td>
+                            <td><span class="badge bg-primary">@rule.Strategy</span></td>
+                            <td>@FormatParameters(rule)</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveRule(rule)">Remove</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+<hr />
+
+<div class="row mt-3">
+    <div class="col-md-8">
+        <h5>Add New Rule</h5>
+        <div class="mb-3">
+            <label for="tableName" class="form-label">Table Name</label>
+            <input id="tableName" type="text" class="form-control" @bind="newTableName" placeholder="e.g. dbo.Users" />
+        </div>
+
+        <div class="mb-3">
+            <label for="columnName" class="form-label">Column Name</label>
+            <input id="columnName" type="text" class="form-control" @bind="newColumnName" placeholder="e.g. Email" />
+        </div>
+
+        <div class="mb-3">
+            <label for="strategy" class="form-label">Strategy</label>
+            <select id="strategy" class="form-select" @bind="selectedStrategy">
+                @foreach (var s in Enum.GetValues<DesensitizationStrategyType>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        </div>
+
+        @if (selectedStrategy == DesensitizationStrategyType.Randomization)
+        {
+            <div class="mb-3">
+                <label for="minLength" class="form-label">Min Length</label>
+                <input id="minLength" type="number" class="form-control" @bind="paramMinLength" min="0" />
+            </div>
+            <div class="mb-3">
+                <label for="maxLength" class="form-label">Max Length</label>
+                <input id="maxLength" type="number" class="form-control" @bind="paramMaxLength" min="0" />
+            </div>
+        }
+
+        @if (selectedStrategy == DesensitizationStrategyType.Masking)
+        {
+            <div class="mb-3">
+                <label for="maskChar" class="form-label">Mask Character</label>
+                <input id="maskChar" type="text" class="form-control" @bind="paramMaskChar" maxlength="1" />
+            </div>
+            <div class="mb-3">
+                <label for="preserveStart" class="form-label">Preserve Start</label>
+                <input id="preserveStart" type="number" class="form-control" @bind="paramPreserveStart" min="0" />
+            </div>
+            <div class="mb-3">
+                <label for="preserveEnd" class="form-label">Preserve End</label>
+                <input id="preserveEnd" type="number" class="form-control" @bind="paramPreserveEnd" min="0" />
+            </div>
+        }
+
+        @if (selectedStrategy == DesensitizationStrategyType.FixedValue)
+        {
+            <div class="mb-3">
+                <label for="fixedValue" class="form-label">Fixed Value</label>
+                <input id="fixedValue" type="text" class="form-control" @bind="paramFixedValue" placeholder="Replacement value" />
+            </div>
+        }
+
+        <button class="btn btn-primary" @onclick="AddRule">Add Rule</button>
+    </div>
+</div>
+
+<hr />
+
+<div class="row mt-3">
+    <div class="col-md-12">
+        <h5>Auto-Detection</h5>
+        <button class="btn btn-outline-secondary" @onclick="AutoDetectAsync" disabled="@isDetecting">
+            @if (isDetecting)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <span>Detecting...</span>
+            }
+            else
+            {
+                <span>Auto-Detect Sensitive Columns</span>
+            }
+        </button>
+
+        @if (suggestions.Count > 0)
+        {
+            <table class="table table-striped table-sm mt-3">
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Column</th>
+                        <th>Suggested Strategy</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var suggestion in suggestions)
+                    {
+                        <tr>
+                            <td>@suggestion.TableName</td>
+                            <td>@suggestion.ColumnName</td>
+                            <td><span class="badge bg-info text-dark">@suggestion.Strategy</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-success me-1" @onclick="() => AcceptSuggestion(suggestion)">Accept</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => DismissSuggestion(suggestion)">Dismiss</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private string newTableName = string.Empty;
+    private string newColumnName = string.Empty;
+    private DesensitizationStrategyType selectedStrategy = DesensitizationStrategyType.Randomization;
+
+    // Randomization params
+    private int? paramMinLength;
+    private int? paramMaxLength;
+
+    // Masking params
+    private string paramMaskChar = "*";
+    private int paramPreserveStart;
+    private int paramPreserveEnd;
+
+    // FixedValue params
+    private string paramFixedValue = string.Empty;
+
+    private string? validationError;
+    private string? successMessage;
+    private bool isDetecting;
+    private List<DesensitizationRule> suggestions = new();
+
+    private void AddRule()
+    {
+        validationError = null;
+        successMessage = null;
+
+        if (string.IsNullOrWhiteSpace(newTableName) || string.IsNullOrWhiteSpace(newColumnName))
+        {
+            validationError = "Table name and column name are required.";
+            return;
+        }
+
+        var parameters = BuildParameters();
+        var rule = new DesensitizationRule(newTableName.Trim(), newColumnName.Trim(), selectedStrategy, parameters);
+        var result = RuleConfigurationService.AddRule(rule);
+
+        if (!result.IsValid)
+        {
+            validationError = result.ErrorMessage;
+        }
+        else
+        {
+            successMessage = $"Rule added: {rule.Strategy} on {rule.TableName}.{rule.ColumnName}";
+            ResetForm();
+        }
+    }
+
+    private StrategyParameters BuildParameters()
+    {
+        return selectedStrategy switch
+        {
+            DesensitizationStrategyType.Randomization => new StrategyParameters
+            {
+                MinLength = paramMinLength,
+                MaxLength = paramMaxLength
+            },
+            DesensitizationStrategyType.Masking => new StrategyParameters
+            {
+                MaskCharacter = string.IsNullOrEmpty(paramMaskChar) ? '*' : paramMaskChar[0],
+                PreserveStart = paramPreserveStart,
+                PreserveEnd = paramPreserveEnd
+            },
+            DesensitizationStrategyType.FixedValue => new StrategyParameters
+            {
+                FixedValue = paramFixedValue
+            },
+            _ => new StrategyParameters()
+        };
+    }
+
+    private void ResetForm()
+    {
+        newTableName = string.Empty;
+        newColumnName = string.Empty;
+        selectedStrategy = DesensitizationStrategyType.Randomization;
+        paramMinLength = null;
+        paramMaxLength = null;
+        paramMaskChar = "*";
+        paramPreserveStart = 0;
+        paramPreserveEnd = 0;
+        paramFixedValue = string.Empty;
+    }
+
+    private void RemoveRule(DesensitizationRule rule)
+    {
+        RuleConfigurationService.RemoveRule(rule.TableName, rule.ColumnName);
+        successMessage = $"Removed rule for {rule.TableName}.{rule.ColumnName}";
+        validationError = null;
+    }
+
+    private async Task AutoDetectAsync()
+    {
+        isDetecting = true;
+        validationError = null;
+        successMessage = null;
+
+        try
+        {
+            var tables = await SchemaService.GetTablesAsync();
+            var columnsByTable = new Dictionary<string, List<ColumnInfo>>();
+
+            foreach (var table in tables)
+            {
+                var key = $"{table.SchemaName}.{table.TableName}";
+                var columns = await SchemaService.GetColumnsAsync(key);
+                columnsByTable[key] = columns;
+            }
+
+            suggestions = RuleConfigurationService.AutoDetectRules(tables, columnsByTable);
+
+            // Remove suggestions that already have a rule
+            suggestions = suggestions
+                .Where(s => !RuleConfigurationService.Rules.Any(r =>
+                    string.Equals(r.TableName, s.TableName, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(r.ColumnName, s.ColumnName, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            if (suggestions.Count == 0)
+            {
+                successMessage = "No new sensitive columns detected.";
+            }
+            else
+            {
+                successMessage = $"Found {suggestions.Count} suggestion(s).";
+            }
+        }
+        catch (Exception ex)
+        {
+            validationError = $"Auto-detection failed: {ex.Message}";
+        }
+        finally
+        {
+            isDetecting = false;
+        }
+    }
+
+    private void AcceptSuggestion(DesensitizationRule suggestion)
+    {
+        RuleConfigurationService.AddRule(suggestion);
+        suggestions.Remove(suggestion);
+        successMessage = $"Accepted: {suggestion.Strategy} on {suggestion.TableName}.{suggestion.ColumnName}";
+        validationError = null;
+    }
+
+    private void DismissSuggestion(DesensitizationRule suggestion)
+    {
+        suggestions.Remove(suggestion);
+    }
+
+    private string FormatParameters(DesensitizationRule rule)
+    {
+        return rule.Strategy switch
+        {
+            DesensitizationStrategyType.Randomization =>
+                $"MinLength={rule.Parameters.MinLength?.ToString() ?? "—"}, MaxLength={rule.Parameters.MaxLength?.ToString() ?? "—"}",
+            DesensitizationStrategyType.Masking =>
+                $"Mask='{rule.Parameters.MaskCharacter}', PreserveStart={rule.Parameters.PreserveStart}, PreserveEnd={rule.Parameters.PreserveEnd}",
+            DesensitizationStrategyType.FixedValue =>
+                $"Value=\"{rule.Parameters.FixedValue ?? ""}\"",
+            _ => "—"
+        };
+    }
+}

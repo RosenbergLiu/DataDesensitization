@@ -1,0 +1,59 @@
+﻿@inherits LayoutComponentBase
+@inject IConnectionManager ConnectionManager
+@implements IDisposable
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <span class="me-3">
+                @switch (ConnectionManager.Status)
+                {
+                    case ConnectionStatus.Connected:
+                        <span class="badge bg-success">Connected</span>
+                        break;
+                    case ConnectionStatus.Connecting:
+                        <span class="badge bg-warning text-dark">Connecting...</span>
+                        break;
+                    case ConnectionStatus.Error:
+                        <span class="badge bg-danger">Error</span>
+                        break;
+                    default:
+                        <span class="badge bg-secondary">Disconnected</span>
+                        break;
+                }
+            </span>
+            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        ConnectionManager.StatusChanged += OnStatusChanged;
+    }
+
+    private void OnStatusChanged(ConnectionStatus status)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ConnectionManager.StatusChanged -= OnStatusChanged;
+    }
+}

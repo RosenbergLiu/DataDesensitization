@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DataDesensitization/DataDesensitization.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DataDesensitization.Tests/DataDesensitization.Tests.csproj" />
+  </Folder>
+</Solution>

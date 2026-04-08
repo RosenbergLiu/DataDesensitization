@@ -1,0 +1,177 @@
+@page "/preview"
+@rendermode InteractiveServer
+@inject IDesensitizationEngine DesensitizationEngine
+@inject IRuleConfigurationService RuleConfigurationService
+
+<PageTitle>Data Preview</PageTitle>
+
+<h3>Data Preview</h3>
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger mt-2" role="alert">@errorMessage</div>
+}
+
+@if (infoMessage is not null)
+{
+    <div class="alert alert-info mt-2" role="alert">@infoMessage</div>
+}
+
+<div class="row mt-3">
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="tableName" class="form-label">Table Name</label>
+            <input id="tableName" type="text" class="form-control" @bind="tableName" placeholder="e.g. dbo.Users" />
+        </div>
+        <button class="btn btn-primary" @onclick="GeneratePreviewAsync" disabled="@isLoading">
+            @if (isLoading)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <span>Generating...</span>
+            }
+            else
+            {
+                <span>Generate Preview</span>
+            }
+        </button>
+    </div>
+</div>
+
+@if (previewResult is not null && previewResult.Rows.Count > 0)
+{
+    <div class="mt-4">
+        <h5>Preview for <strong>@previewResult.TableName</strong> (@previewResult.Rows.Count row(s))</h5>
+        @if (isStale)
+        {
+            <div class="alert alert-warning py-1 mt-2" role="alert">
+                Rules have been modified since this preview was generated. Click "Generate Preview" to refresh.
+            </div>
+        }
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm mt-2">
+                <thead class="table-light">
+                    <tr>
+                        <th>Column</th>
+                        <th>Original</th>
+                        <th>Desensitized</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (row, rowIndex) in previewResult.Rows.Select((r, i) => (r, i)))
+                    {
+                        @foreach (var (key, colIndex) in row.OriginalValues.Keys.Select((k, i) => (k, i)))
+                        {
+                            <tr>
+                                @if (colIndex == 0)
+                                {
+                                    <td colspan="3" class="table-secondary fw-bold">Row @(rowIndex + 1)</td>
+                                }
+                            </tr>
+                            <tr>
+                                <td>@key</td>
+                                <td>@FormatValue(row.OriginalValues[key])</td>
+                                <td>@FormatValue(row.DesensitizedValues.GetValueOrDefault(key))</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private string tableName = string.Empty;
+    private string? errorMessage;
+    private string? infoMessage;
+    private bool isLoading;
+    private bool isStale;
+    private PreviewResult? previewResult;
+    private int rulesSnapshotHash;
+
+    protected override void OnInitialized()
+    {
+        rulesSnapshotHash = ComputeRulesHash();
+    }
+
+    private async Task GeneratePreviewAsync()
+    {
+        errorMessage = null;
+        infoMessage = null;
+        previewResult = null;
+        isStale = false;
+
+        if (string.IsNullOrWhiteSpace(tableName))
+        {
+            errorMessage = "Please enter a table name.";
+            return;
+        }
+
+        var tableRules = RuleConfigurationService.Rules
+            .Where(r => string.Equals(r.TableName, tableName.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (tableRules.Count == 0)
+        {
+            infoMessage = $"No desensitization rules are configured for table \"{tableName.Trim()}\".";
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            previewResult = await DesensitizationEngine.PreviewAsync(tableName.Trim(), tableRules);
+            rulesSnapshotHash = ComputeRulesHash();
+
+            if (previewResult.Rows.Count == 0)
+            {
+                infoMessage = "Preview returned no rows. The table may be empty.";
+                previewResult = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Preview failed: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private int ComputeRulesHash()
+    {
+        var hash = new HashCode();
+        foreach (var rule in RuleConfigurationService.Rules)
+        {
+            hash.Add(rule);
+        }
+        return hash.ToHashCode();
+    }
+
+    private bool CheckStale()
+    {
+        var current = ComputeRulesHash();
+        if (current != rulesSnapshotHash)
+        {
+            isStale = true;
+            return true;
+        }
+        return false;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (previewResult is not null)
+        {
+            CheckStale();
+        }
+    }
+
+    private static string FormatValue(object? value)
+    {
+        if (value is null || value == DBNull.Value)
+            return "(null)";
+        return value.ToString() ?? "(null)";
+    }
+}

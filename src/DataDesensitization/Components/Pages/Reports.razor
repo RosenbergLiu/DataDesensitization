@@ -1,0 +1,160 @@
+@page "/reports"
+@rendermode InteractiveServer
+@inject IReportSerializer ReportSerializer
+
+<PageTitle>Execution Reports</PageTitle>
+
+<h3>Execution Reports</h3>
+
+@if (successMessage is not null)
+{
+    <div class="alert alert-success mt-2" role="alert">@successMessage</div>
+}
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger mt-2" role="alert">@errorMessage</div>
+}
+
+<!-- Import Section -->
+<div class="card mt-3">
+    <div class="card-header"><h5 class="mb-0">Import Report</h5></div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label for="importFilePath" class="form-label">File Path</label>
+            <input type="text" class="form-control" id="importFilePath"
+                   @bind="importFilePath" placeholder="e.g. C:\reports\execution-report.json" />
+        </div>
+        <button class="btn btn-primary" @onclick="ImportReportAsync"
+                disabled="@(string.IsNullOrWhiteSpace(importFilePath))">
+            Import Report
+        </button>
+    </div>
+</div>
+
+<!-- Report Display -->
+@if (report is not null)
+{
+    <div class="card mt-3">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Report Summary</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <strong>Started:</strong><br />@report.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                </div>
+                <div class="col-md-3">
+                    <strong>Completed:</strong><br />@report.CompletedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                </div>
+                <div class="col-md-3">
+                    <strong>Total Elapsed:</strong><br />@report.TotalElapsed.ToString(@"hh\:mm\:ss\.fff")
+                </div>
+                <div class="col-md-3">
+                    <strong>Total Rows Updated:</strong><br />@report.TotalRowsUpdated
+                </div>
+            </div>
+
+            @if (report.TotalErrors > 0)
+            {
+                <div class="alert alert-warning">
+                    @report.TotalErrors table(s) encountered errors during execution.
+                </div>
+            }
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Table Name</th>
+                            <th>Rows Updated</th>
+                            <th>Elapsed</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var result in report.TableResults)
+                        {
+                            <tr class="@(result.Error is not null ? "table-danger" : "")">
+                                <td>@result.TableName</td>
+                                <td>@result.RowsUpdated</td>
+                                <td>@result.Elapsed.ToString(@"hh\:mm\:ss\.fff")</td>
+                                <td>
+                                    @if (result.Error is not null)
+                                    {
+                                        <span class="text-danger">@result.Error</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-success">Success</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Section -->
+    <div class="card mt-3">
+        <div class="card-header"><h5 class="mb-0">Export Report</h5></div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="exportFilePath" class="form-label">File Path</label>
+                <input type="text" class="form-control" id="exportFilePath"
+                       @bind="exportFilePath" placeholder="e.g. C:\reports\execution-report.json" />
+            </div>
+            <button class="btn btn-outline-primary" @onclick="ExportReportAsync"
+                    disabled="@(string.IsNullOrWhiteSpace(exportFilePath))">
+                Export Report
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private string importFilePath = string.Empty;
+    private string exportFilePath = string.Empty;
+
+    private string? successMessage;
+    private string? errorMessage;
+
+    private ExecutionReport? report;
+
+    private void ClearMessages()
+    {
+        successMessage = null;
+        errorMessage = null;
+    }
+
+    private async Task ImportReportAsync()
+    {
+        ClearMessages();
+        try
+        {
+            report = await ReportSerializer.ImportFromFileAsync(importFilePath.Trim());
+            successMessage = $"Report imported successfully. {report.TableResults.Count} table result(s) loaded.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to import report: {ex.Message}";
+            report = null;
+        }
+    }
+
+    private async Task ExportReportAsync()
+    {
+        ClearMessages();
+        try
+        {
+            await ReportSerializer.ExportToFileAsync(report!, exportFilePath.Trim());
+            successMessage = $"Report exported to '{exportFilePath.Trim()}'.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to export report: {ex.Message}";
+        }
+    }
+}
