@@ -27,6 +27,9 @@ internal class ConfigurableFakeSchemaIntrospector : ISchemaIntrospector
 
     public Task<MigrationRecord?> GetNewestMigrationAsync(CancellationToken ct = default)
         => Task.FromResult<MigrationRecord?>(null);
+
+    public Task<List<MigrationRecord>> GetAllMigrationsAsync(CancellationToken ct = default)
+        => Task.FromResult(new List<MigrationRecord>());
 }
 
 public class SchemaServiceTests
