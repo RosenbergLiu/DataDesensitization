@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DataDesensitization.Models;
@@ -7,6 +9,7 @@ namespace DataDesensitization.Services;
 public class ProfileManager : IProfileManager
 {
     private readonly ISchemaIntrospector _introspector;
+    private static readonly byte[] HashKey = Encoding.UTF8.GetBytes("123456789");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -24,11 +27,12 @@ public class ProfileManager : IProfileManager
     public async Task<byte[]> ExportProfileAsync(string name, IReadOnlyList<DesensitizationRule> rules)
     {
         var migrations = await _introspector.GetAllMigrationsAsync();
+        var hash = ComputeMigrationHash(migrations);
 
         var profile = new Profile
         {
             Name = name,
-            MigrationHistory = migrations,
+            MigrationHistoryHash = hash,
             Rules = rules.ToList()
         };
 
@@ -42,7 +46,19 @@ public class ProfileManager : IProfileManager
 
         var currentMigrations = await _introspector.GetAllMigrationsAsync();
 
-        if (!MigrationHistoriesMatch(profile.MigrationHistory, currentMigrations))
+        // Support both hashed and legacy raw migration history
+        if (profile.MigrationHistoryHash is not null)
+        {
+            var currentHash = ComputeMigrationHash(currentMigrations);
+            if (!string.Equals(profile.MigrationHistoryHash, currentHash, StringComparison.Ordinal))
+            {
+                return new ProfileImportResult(
+                    false,
+                    "Migration history mismatch. The hashed migration history in the profile does not match the current database.",
+                    null);
+            }
+        }
+        else if (!MigrationHistoriesMatch(profile.MigrationHistory, currentMigrations))
         {
             var expected = profile.MigrationHistory.Count > 0
                 ? $"{profile.MigrationHistory.Count} migration(s), latest: {profile.MigrationHistory[^1].MigrationId}"
@@ -87,6 +103,17 @@ public class ProfileManager : IProfileManager
 
         var loadResult = new ProfileLoadResult(matched, unmatched);
         return new ProfileImportResult(true, null, loadResult);
+    }
+
+    private static string ComputeMigrationHash(List<MigrationRecord> migrations)
+    {
+        var payload = JsonSerializer.Serialize(
+            migrations.Select(m => new { m.MigrationId, m.ProductVersion }),
+            JsonOptions);
+
+        using var hmac = new HMACSHA256(HashKey);
+        var hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
+        return Convert.ToHexString(hashBytes);
     }
 
     private static bool MigrationHistoriesMatch(List<MigrationRecord> exported, List<MigrationRecord> current)
