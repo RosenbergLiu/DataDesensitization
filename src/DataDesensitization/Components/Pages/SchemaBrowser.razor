@@ -5,10 +5,10 @@
 <PageTitle>Schema Browser</PageTitle>
 
 <div class="max-w-5xl">
-    <h2 class="text-2xl font-bold text-gray-900">Schema Browser</h2>
+    <h2 class="text-xl sm:text-2xl font-bold text-gray-900">Schema Browser</h2>
     <p class="mt-1 text-sm text-gray-500">Explore your database tables and columns.</p>
 
-    <div class="mt-6">
+    <div class="mt-4 sm:mt-6">
         <div class="relative">
             <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             <input type="text"
@@ -59,7 +59,8 @@
                             <div class="border-t border-gray-100">
                                 @if (columnsByTable.TryGetValue(tableKey, out var columns))
                                 {
-                                    <div class="overflow-x-auto">
+                                    <!-- Desktop table -->
+                                    <div class="overflow-x-auto hidden sm:block">
                                         <table class="w-full text-sm">
                                             <thead>
                                                 <tr class="bg-gray-50 text-left">
@@ -106,6 +107,39 @@
                                                 }
                                             </tbody>
                                         </table>
+                                    </div>
+                                    <!-- Mobile cards -->
+                                    <div class="sm:hidden divide-y divide-gray-100">
+                                        @foreach (var col in FilterColumns(columns))
+                                        {
+                                            var hasRule = HasAssignedRule(table.TableName, col.ColumnName);
+                                            var isSensitive = IsAutoDetectedSensitive(col.ColumnName);
+
+                                            <div class="px-4 py-3 @(isSensitive && !hasRule ? "bg-amber-50/50" : "")">
+                                                <div class="flex items-center justify-between">
+                                                    <span class="font-medium text-gray-900 text-sm">@col.ColumnName</span>
+                                                    <code class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">@col.DataType@(col.MaxLength.HasValue ? $"({col.MaxLength})" : "")</code>
+                                                </div>
+                                                <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                                    @if (col.IsNullable)
+                                                    {
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Nullable</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800 text-white">Not Null</span>
+                                                    }
+                                                    @if (hasRule)
+                                                    {
+                                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">&#x2714; Rule</span>
+                                                    }
+                                                    else if (isSensitive)
+                                                    {
+                                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">&#x26A0; Sensitive</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
                                     </div>
                                 }
                                 else
